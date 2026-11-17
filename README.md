@@ -8,16 +8,10 @@ A small web app for our security class that records the IP address, browser (Use
 
 ## Ground rules
 
-- Runs on `localhost` only. It is not deployed publicly.
-- The page tells every visitor exactly what was recorded (no hidden tracking).
-- Only test with ourselves, classmates, or people who have agreed to it.
-- Logs stay on our machine and are deleted after the project is graded.
 
 ## Planned features
 
-- Landing page that shows the visitor their own IP, User-Agent and timestamp
-- Logging of each visit to a local `visits.csv`
-- Escaping of logged values so the page can't be injected into via headers
+
 
 ## Planned stack
 
