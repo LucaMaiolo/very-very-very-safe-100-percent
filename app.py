@@ -165,28 +165,30 @@ def page(body):
     return Response(body, mimetype="text/html", headers={"Cache-Control": "no-store"})
 
 # ---- notice page --------------------------------------------------------------------------------
-NOTICE = """<!doctype html><meta charset=utf-8>
-<meta http-equiv="refresh" content="5;url={dest}">
-<title>Security class demo</title>
-<h1>Security class demo</h1>
-<p>This is a university class project. This visit records:</p>
-<ul>
-<li>IP: {ip}</li>
-<li>Approximate location: {place}</li>
-<li>Internet provider: {isp}</li>
-<li>Browser: {ua}</li>
-<li>Time (UTC): {ts}</li>
-<li>From your browser: time zone, language, screen and window size, pixel ratio</li>
-<li>A cookie that lets us tell repeat visits from this browser apart from new ones</li>
-</ul>
-<p>Your IP is sent to ip-api.com to look up the location and provider. Data is used only for the class demo and deleted after grading.</p>
-<p>Redirecting in 5 seconds. <a href="{dest}">Go now</a></p>
-<script>
-fetch("/t", {{method: "POST", keepalive: true, headers: {{"Content-Type": "application/json"}},
-  body: JSON.stringify({{id: "{vid}", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    language: navigator.language, screen: screen.width + "x" + screen.height,
-    viewport: innerWidth + "x" + innerHeight, pixel_ratio: devicePixelRatio}})}});
-</script>"""
+NOTICE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loading</title>
+<style>
+  body { margin: 0; height: 100vh; display: grid; place-items: center; background: #111; }
+  .spinner {
+    width: 60px; height: 60px;
+    border: 6px solid #333;
+    border-top-color: #4ea1ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+</style>
+</head>
+<body>
+  <div class="spinner" role="status" aria-label="Loading"></div>
+</body>
+</html>
+"""
 
 def render(vid, dest, ip, g, ua, ts):
     # escape: the User-Agent header is attacker-controlled
