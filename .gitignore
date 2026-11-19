@@ -1,1 +1,7 @@
 visits.csv
+telemetry.csv
+
+.venv/
+__pycache__/
+.env
+.vercel/

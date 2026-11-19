@@ -1,6 +1,6 @@
 # IP Logger (Security Class Final Project)
 
-A small web app for our security class. It works as a link redirector: a short link such as `/r/demo` records the visitor's IP address, browser (User-Agent) and time, then forwards them to a destination page. It demonstrates what any web server can see about a client.
+A small web app for our security class. It works as a link redirector: a short link such as `/r/demo` shows a notice, records what the server and browser reveal about the visitor, then forwards them to a destination page. It demonstrates what any web server can learn about a client.
 
 **Authors:** Luca Maiolo, Jaden Mayoff
 
@@ -9,44 +9,77 @@ A small web app for our security class. It works as a link redirector: a short l
 ## Ground rules
 
 - Hosted temporarily for the class demo, then taken down after grading.
-- Every visitor may see a notice before the redirect saying what is recorded (IP, User-Agent, time). No silent tracking (option in dashboard).
+- Every visitor may see a notice before the redirect saying what is recorded (IP, location, provider, User-Agent, time, browser telemetry). No silent tracking. The notice is currently always shown; a dashboard option to turn it off is only an idea and is not built.
 - Links are shared only with our instructor and classmates who agreed to take part.
 - Logs are deleted after the project is graded.
 
-## Features (planned)
+## What it collects
 
-- Short links (`/r/<name>`) mapped to allowlisted destinations
-- Notice page with a short countdown, then a redirect (HTTP 302)
-- Logging of each visit to `visits.csv` (time, IP, User-Agent, link name)
-- Escaping of logged values so headers can't inject into the page
-- Password-protected `/admin` page to view the log (password from an environment variable, never committed)
+| Data | Source |
+|------|--------|
+| IP address | Network connection (or `X-Forwarded-For` behind a proxy) |
+| Approximate location (city, region, country, lat/lon) and internet provider | Looked up from the IP via [ip-api.com](https://ip-api.com) (the IP is sent to that service) |
+| Browser (User-Agent) and time | Request header and server clock |
+| Time zone, language, screen size, window size, pixel ratio | Small script on the notice page, sent to `/t` |
 
-## Stack (planned)
+Telemetry is deliberately coarse: no canvas, font or other fingerprinting, and no cookies or persistent IDs. The server drops any field outside that list.
 
-- Python 3 standard library (`http.server`), no dependencies
-- Single file: `app.py`
+## Features
 
-## Run locally (once built)
+- Short links (`/r/<name>`) mapped to an allowlist of destinations (no `?url=` redirects, which would be an open-redirect hole)
+- Notice page with a 5-second countdown, then a redirect
+- Each visit gets a random ID, so its telemetry is joined to it
+- Logging to a Supabase Postgres database (`visits` and `telemetry` tables, see `schema.sql`)
+- Escaping of logged values so headers can't inject into pages
+- Password-protected `/admin` page:
+  - visits grouped by visitor IP, with each visit's telemetry shown beside it
+  - a map of approximate visitor locations (Leaflet and OpenStreetMap tiles, loaded in the admin's browser)
+
+## Stack
+
+- Python 3 + Flask (`app.py`, one file)
+- Hosting: Vercel (serverless)
+- Storage: Supabase Postgres, called over its REST API with the standard library (no extra packages)
+
+## Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `SUPABASE_URL` | Project URL, like `https://abcd.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | The `service_role` key. Server-side only. Never commit it or expose it in the browser. |
+| `ADMIN_PASSWORD` | Password for `/admin` (any username). If unset, `/admin` is disabled (404). |
+| `TRUST_PROXY=1` | Use the client IP from `X-Forwarded-For`. Turned on automatically on Vercel. Elsewhere set it only behind a proxy you control, because clients can fake the header. |
+
+Edit the `LINKS` dict at the top of `app.py` to change destinations.
+
+## Run locally
 
 ```bash
-python3 app.py
+pip install -r requirements.txt
+ADMIN_PASSWORD=choose-a-password python3 app.py
 ```
 
-Then open http://localhost:8000/r/demo.
+- Visit http://localhost:8000/r/demo
+- View the log and map at http://localhost:8000/admin
+- Without the Supabase variables, visits are kept in memory and vanish when you stop the server. That's fine for local testing.
+- From your own machine you appear as `127.0.0.1`, which has no location. Test on the deployed site to see a real public IP.
+- Self-check: `python3 test_app.py`
 
-## Hosting for class
+## Deploy to Vercel + Supabase
 
-Pick one when we get there:
+1. **Supabase:** create a free project at supabase.com. Open SQL Editor, paste `schema.sql`, and run it. Under Project Settings, then API, copy the project URL and the `service_role` key.
+2. **GitHub:** push this repo.
+3. **Vercel:** import the repo as a new project. Under Settings, then Environment Variables, add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `ADMIN_PASSWORD`, then deploy.
+4. Open `https://<project>.vercel.app/r/demo`, then `/admin` to check the visit and map appear.
+5. **After grading:** delete the Vercel project and the Supabase project, which also removes the logs.
 
-- **Temporary tunnel (easiest):** run locally and expose it with `ngrok http 8000` or `cloudflared tunnel`. The link dies when we stop it.
-- **Small cloud host:** Render, Fly.io or a small VPS. Set the admin password as an environment variable, and delete the service after grading.
-
-Behind a tunnel or proxy the server sees the proxy's IP, so the app must read `X-Forwarded-For`. That header is client-controlled, so we should only trust it when the proxy sets it.
+The app refuses to start on Vercel if the Supabase variables are missing, rather than silently losing logs.
 
 ## What we'll cover in the write-up
 
 - What an IP address does and doesn't reveal (rough location, ISP, not identity)
 - Why proxies, VPNs, NAT and tunnels change what the server sees (`X-Forwarded-For`)
+- What a page's script can add on top of an IP (time zone, language, screen)
 - Privacy and legal concerns: consent, GDPR-style rules, misuse of IP loggers
 - Why open redirects are a vulnerability, and why we use an allowlist
 - Defenses: VPNs, Tor, link previews, blocking tracking requests
@@ -54,7 +87,8 @@ Behind a tunnel or proxy the server sees the proxy's IP, so the app must read `X
 ## Status
 
 - [x] README
-- [ ] Server (`app.py`)
-- [ ] Hosting
-- [ ] Testing
+- [x] Server (`app.py`)
+- [x] Rewrite for Vercel + Supabase
+- [ ] Supabase project + schema
+- [ ] Deployed and tested on Vercel
 - [ ] Write-up
