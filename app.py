@@ -71,7 +71,8 @@ def db_select(table):
     if not SUPABASE_URL:
         return list(_mem[table].values()) if table == "devices" else list(_mem[table])
     # shortcut: cap of 5000 rows is plenty for a class demo; paginate beyond that
-    req = urllib.request.Request(f"{SUPABASE_URL}/rest/v1/{table}?select=*&order=time_utc.asc&limit=5000",
+    order = "first_seen" if table == "devices" else "time_utc"  # devices has no time_utc column
+    req = urllib.request.Request(f"{SUPABASE_URL}/rest/v1/{table}?select=*&order={order}.asc&limit=5000",
                                  headers=_headers())
     return json.load(urllib.request.urlopen(req, timeout=5))
 
