@@ -2,12 +2,15 @@
 coarse browser telemetry, bot flagging, password-protected /admin dashboard with one tab per
 device (nameable, own map) plus a separate reviewed-on-demand bot tab.
 Local run: python3 app.py -> http://localhost:8000/r/demo (in-memory storage if Supabase isn't configured)."""
-import hmac, html, ipaddress, json, os, re, secrets, sys, urllib.request
+import hmac, html, ipaddress, json, os, re, secrets, sys, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from flask import Flask, Response, abort, redirect, request
 
-# Only these destinations are reachable; no ?url= redirects (open-redirect hole).
+# Default short links. The admin can add links or change destinations from /admin (stored in the
+# links table, which wins over these). Visitors can never choose a destination: no ?url= redirects
+# (open-redirect hole).
 LINKS = {"demo": "https://example.com"}
+LINK_NAME_RE = re.compile(r"[a-z0-9-]{1,32}")
 # Telemetry is limited to these coarse fields; anything else the client sends is dropped.
 TELEM_FIELDS = ["timezone", "language", "screen", "viewport", "pixel_ratio"]
 # UA substrings of known link-preview/crawler bots (Discord, Slack, social previews, search crawlers).
@@ -33,7 +36,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2048  # telemetry / label payloads are tiny
 
 # ---- storage: Supabase REST API, or in memory for local dev/tests -------------------------------
-_mem = {"visits": [], "telemetry": [], "devices": {}}
+_mem = {"visits": [], "telemetry": [], "devices": {}, "links": {}}
 
 def _headers(extra=None):
     h = {"apikey": SUPABASE_KEY, "Content-Type": "application/json", **(extra or {})}
@@ -69,12 +72,50 @@ def db_upsert_device(device_id, ts, label=None):
 
 def db_select(table):
     if not SUPABASE_URL:
-        return list(_mem[table].values()) if table == "devices" else list(_mem[table])
+        return list(_mem[table].values()) if table in ("devices", "links") else list(_mem[table])
     # shortcut: cap of 5000 rows is plenty for a class demo; paginate beyond that
-    order = "first_seen" if table == "devices" else "time_utc"  # devices has no time_utc column
+    order = {"devices": "first_seen", "links": "name"}.get(table, "time_utc")  # only visits/telemetry have time_utc
     req = urllib.request.Request(f"{SUPABASE_URL}/rest/v1/{table}?select=*&order={order}.asc&limit=5000",
                                  headers=_headers())
     return json.load(urllib.request.urlopen(req, timeout=5))
+
+def db_upsert_link(name, url):
+    if not SUPABASE_URL:
+        _mem["links"][name] = {"name": name, "url": url}
+        return
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/rest/v1/links?on_conflict=name", data=json.dumps({"name": name, "url": url}).encode(),
+        method="POST", headers=_headers({"Prefer": "resolution=merge-duplicates,return=minimal"}))
+    urllib.request.urlopen(req, timeout=5).close()
+
+def all_links():
+    """Defaults merged with admin-set links (admin-set wins)."""
+    return {**LINKS, **{r["name"]: r["url"] for r in db_select("links")}}
+
+def link_dest(name):
+    if not LINK_NAME_RE.fullmatch(name):
+        return None
+    try:
+        if SUPABASE_URL:  # name is regex-checked above, so it's safe in the query string
+            req = urllib.request.Request(f"{SUPABASE_URL}/rest/v1/links?select=url&name=eq.{name}",
+                                         headers=_headers())
+            rows = json.load(urllib.request.urlopen(req, timeout=5))
+            if rows:
+                return rows[0]["url"]
+        elif name in _mem["links"]:
+            return _mem["links"][name]["url"]
+    except OSError as err:  # fall back to the defaults rather than break every link
+        print(f"link lookup failed: {err}", file=sys.stderr)
+    return LINKS.get(name)
+
+def valid_dest(url):
+    """Only plain http(s) URLs with a host; no javascript:, data:, or control characters."""
+    try:
+        p = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    return p.scheme in ("http", "https") and bool(p.hostname) and len(url) <= 500 and url.isprintable() \
+        and " " not in url
 
 def save(table, row):
     try:
@@ -156,7 +197,7 @@ def render(vid, dest, ip, g, ua, ts):
 
 @app.get("/r/<name>")
 def redirect_page(name):
-    dest = LINKS.get(name)
+    dest = link_dest(name)
     if not dest:
         abort(404)
     ip, ua = client_ip(), request.headers.get("User-Agent", "")
@@ -233,6 +274,12 @@ background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
 .chip{flex:none;font-size:12px;font-weight:500;padding:1px 8px;border-radius:999px;
 background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--ink)}
 .sep{height:1px;background:var(--line);margin:6px 10px}
+.side{display:grid;gap:16px}
+.lf{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px}
+.lf input{flex:1 1 100%;min-width:0;font:13px system-ui,sans-serif;height:32px;padding:0 10px;border:1px solid var(--line2);
+border-radius:8px;background:var(--card);color:var(--ink)}
+.lf input[name=slug]{flex:1 1 100px}
+.lf input:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .panel{display:none;padding:20px}
 .panel.active{display:block}
 .ph{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -257,7 +304,7 @@ tr:last-child td{border-bottom:0}
 .empty{padding:48px 24px;text-align:center;color:var(--muted)}
 .empty code{color:var(--ink);background:var(--soft);padding:2px 6px;border-radius:6px}
 @media (max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}.main{grid-template-columns:minmax(0,1fr)}
-.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px}.list h2,.sep{grid-column:1/-1}}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px}.list h2,.sep,.lf{grid-column:1/-1}}
 @media (max-width:480px){.wrap{padding:16px}.kpi{padding:14px 16px}.kpi .val{font-size:24px}.panel{padding:16px}
 .ago{display:none}.map{height:220px}}
 </style>
@@ -271,7 +318,7 @@ __BODY__
 const maps = __MAPS__;
 function showTab(id) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + id));
-  document.querySelectorAll(".item").forEach(b => {
+  document.querySelectorAll(".item[data-id]").forEach(b => {
     b.classList.toggle("active", b.dataset.id === id);
     b.setAttribute("aria-selected", b.dataset.id === id);
   });
@@ -299,11 +346,22 @@ async function rename(id) {
   note.textContent = r.ok ? "Saved" : "Not saved";
   if (r.ok) document.querySelector("#tabbtn-" + id + " .nm").textContent = label || "Device " + id.slice(0, 8);
 }
-document.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => showTab(b.dataset.id)));
+document.querySelectorAll(".item[data-id]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.id)));
 document.querySelectorAll(".ph input").forEach(i => i.addEventListener("keydown", ev => {
   if (ev.key === "Enter") rename(i.dataset.id);
 }));
-const first = document.querySelector(".item");
+function pickLink(b) {
+  const f = document.querySelector(".lf");
+  f.slug.value = b.dataset.name; f.dest.value = b.dataset.url; f.dest.focus();
+}
+async function saveLink(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const r = await fetch("/admin/link", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name: f.slug.value.trim().toLowerCase(), url: f.dest.value.trim()})});
+  if (r.ok) location.reload(); else document.getElementById("link-note").textContent = "Not saved";
+}
+const first = document.querySelector(".item[data-id]");
 if (first) showTab(first.dataset.id);
 </script>"""
 
@@ -376,8 +434,22 @@ def _item(item_id, title, sub, ago, bot=False, count=0):
             f'<span class=av>{"!" if bot else e(initials)}</span>'
             f'<span class=it><span class=nm>{e(title)}</span><span class=ds>{e(sub)}</span></span>{right}</button>')
 
-def admin_html(devices, visits, telem_rows, now=None):
+def _links_card(links):
+    e = html.escape
+    rows = "".join(f'<button type=button class=item onclick="pickLink(this)" data-name="{e(n)}" data-url="{e(u)}" '
+                   f'title="Edit"><span class=it><span class=nm>/r/{e(n)}</span>'
+                   f'<span class=ds title="{e(u)}">{e(u)}</span></span></button>' for n, u in sorted(links.items()))
+    return (f'<div class="card list"><h2 title="Pick a link to change where it goes, or type a new name to add one">'
+            f'Links</h2>{rows}<form class=lf onsubmit="saveLink(event)">'
+            '<input name=slug placeholder="name" required pattern="[a-z0-9\\-]{1,32}" maxlength=32 '
+            'title="Lowercase letters, digits and dashes" aria-label="Link name">'
+            '<button class=btn>Save</button>'
+            '<input name=dest type=url placeholder="https://destination" required maxlength=500 aria-label="Destination URL">'
+            '<span class=saved id=link-note></span></form></div>')
+
+def admin_html(devices, visits, telem_rows, now=None, links=None):
     now = now or datetime.now(timezone.utc)
+    links = LINKS if links is None else links
     telem = {r["visit_id"]: r for r in telem_rows}
     by_device, bots = {}, []
     for v in visits:
@@ -387,8 +459,9 @@ def admin_html(devices, visits, telem_rows, now=None):
     head = ADMIN.replace("__NOW__", now.strftime("%H:%M"))
 
     if not visits:
-        links = " ".join(f"<code>/r/{e(k)}</code>" for k in LINKS)
-        body = f'<div class="card empty">No visits yet. Open a link to log the first one: {links}</div>'
+        names = " ".join(f"<code>/r/{e(k)}</code>" for k in links)
+        body = (f'<section class=main><div class=side>{_links_card(links)}</div>'
+                f'<div class="card empty">No visits yet. Open a link to log the first one: {names}</div></section>')
         return head.replace("__BODY__", body).replace("__MAPS__", "{}")
 
     # order real devices by their most recent visit, newest first
@@ -426,7 +499,8 @@ def admin_html(devices, visits, telem_rows, now=None):
                        f'<div class="val num">{e(str(val))}</div><div class=sub>{e(sub)}</div></div>'
                        for lbl, val, sub, cls, tip in kpis)
     body = (f'<section class=kpis>{kpi_html}</section><section class=main>'
-            f'<nav class="card list" role=tablist aria-label=Devices><h2>Devices</h2>{"".join(items)}</nav>'
+            f'<div class=side><nav class="card list" role=tablist aria-label=Devices><h2>Devices</h2>{"".join(items)}</nav>'
+            f'{_links_card(links)}</div>'
             f'<div>{"".join(panels)}</div></section>')
     maps_js = json.dumps(maps).replace("<", "\\u003c")  # "<" escaped so a value can't close the script tag
     return head.replace("__BODY__", body).replace("__MAPS__", maps_js)
@@ -444,10 +518,27 @@ def admin():
     if not admin_auth_ok():
         return Response(status=401, headers={"WWW-Authenticate": 'Basic realm="admin"'})
     try:
-        return page(admin_html(db_select("devices"), db_select("visits"), db_select("telemetry")))
+        return page(admin_html(db_select("devices"), db_select("visits"), db_select("telemetry"),
+                               links=all_links()))
     except OSError as err:
         print(f"db select failed: {err}", file=sys.stderr)
         abort(502)
+
+@app.post("/admin/link")
+def admin_link():
+    """Add a short link or change where one goes. Admin-only, so the allowlist still holds."""
+    if not admin_auth_ok():
+        abort(401)
+    data = request.get_json(silent=True) or {}
+    name, url = str(data.get("name", "")).strip().lower(), str(data.get("url", "")).strip()
+    if not LINK_NAME_RE.fullmatch(name) or not valid_dest(url):
+        abort(400)
+    try:
+        db_upsert_link(name, url)
+    except OSError as err:
+        print(f"link upsert failed: {err}", file=sys.stderr)
+        abort(502)
+    return "", 204
 
 @app.post("/admin/label")
 def admin_label():

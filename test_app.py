@@ -60,6 +60,19 @@ assert c.post("/admin/label", json={"device_id": "not-hex", "label": "x"}, heade
 a2 = c.get("/admin", headers=AUTH)
 assert b"Luca&#x27;s laptop" in a2.data
 
+# admin-set links: auth required, only http(s) destinations and safe names, then the link redirects there
+L = {"name": "quiz", "url": "https://wikipedia.org/wiki/IP_address"}
+assert c.post("/admin/link", json=L).status_code == 401
+for bad in ({"name": "quiz", "url": "javascript:alert(1)"}, {"name": "quiz", "url": "https://"},
+            {"name": "../x", "url": "https://a.com"}, {"name": "quiz", "url": "https://a.com/\x00"}):
+    assert c.post("/admin/link", json=bad, headers=AUTH).status_code == 400, bad
+assert c.get("/r/quiz").status_code == 404
+assert c.post("/admin/link", json=L, headers=AUTH).status_code == 204
+assert b"wikipedia.org/wiki/IP_address" in c.get("/r/quiz").data
+assert c.post("/admin/link", json={"name": "demo", "url": "https://a.com"}, headers=AUTH).status_code == 204
+assert b'url=https://a.com"' in c.get("/r/demo").data  # admin override beats the built-in default
+assert b"/r/quiz" in c.get("/admin", headers=AUTH).data
+
 # without a proxy header the header is ignored
 m.TRUST_PROXY = False
 c.get("/r/demo", headers={"X-Forwarded-For": "6.6.6.6"})

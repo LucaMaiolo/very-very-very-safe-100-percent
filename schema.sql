@@ -29,8 +29,15 @@ create table if not exists telemetry (
   timezone    text, language text, screen text, viewport text, pixel_ratio text
 );
 
+-- Short links set from /admin; they override the LINKS defaults in app.py.
+create table if not exists links (
+  name text primary key,
+  url  text not null
+);
+
 -- Row level security on with no policies: the public anon key can read/write nothing.
 -- Only the server's service_role key (which bypasses RLS) can touch these tables.
+alter table links     enable row level security;
 alter table devices   enable row level security;
 alter table visits    enable row level security;
 alter table telemetry enable row level security;

@@ -27,10 +27,10 @@ Telemetry is deliberately coarse: no canvas, font or other fingerprinting. The s
 
 ## Features
 
-- Short links (`/r/<name>`) mapped to an allowlist of destinations (no `?url=` redirects, which would be an open-redirect hole)
+- Short links (`/r/<name>`) mapped to an allowlist of destinations (no `?url=` redirects, which would be an open-redirect hole). Only the admin can add a link or change where one goes, from the dashboard; destinations must be `http(s)` URLs
 - Notice page with a 5-second countdown, then a redirect
 - Each visit gets a random ID, so its telemetry is joined to it; each browser gets a cookie ID, so its visits are joined to each other
-- Logging to a Supabase Postgres database (`devices`, `visits`, `telemetry` tables, see `schema.sql`)
+- Logging to a Supabase Postgres database (`devices`, `visits`, `telemetry`, `links` tables, see `schema.sql`)
 - Escaping of logged values so headers can't inject into pages
 - Visits whose User-Agent matches a known link-preview/crawler bot (Discord, Slack, search engines, ...) are flagged, not hidden or treated differently when served
 - Password-protected `/admin` dashboard:
@@ -54,7 +54,9 @@ Telemetry is deliberately coarse: no canvas, font or other fingerprinting. The s
 | `ADMIN_PASSWORD` | Password for `/admin` (any username). If unset, `/admin` is disabled (404). |
 | `TRUST_PROXY=1` | Use the client IP from `X-Forwarded-For`. Turned on automatically on Vercel. Elsewhere set it only behind a proxy you control, because clients can fake the header. |
 
-Edit the `LINKS` dict at the top of `app.py` to change destinations.
+Add links or change destinations in the **Links** card on `/admin`. The `LINKS` dict at the top of `app.py` holds the defaults, which a link set from the dashboard with the same name overrides.
+
+Already ran `schema.sql` before the links feature? Run it again: it is safe to re-run and only adds the `links` table.
 
 ## Run locally
 
