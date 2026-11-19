@@ -184,32 +184,97 @@ def telemetry():
     return "", 204
 
 # ---- admin: one tab per device (nameable, own map), plus a separate bot tab ----------------------
-ADMIN = """<!doctype html><meta charset=utf-8><title>Admin</title>
+# Design notes (dashboard-design skill): screen question = "who opened my links, and which visits need
+# a look?". KPI cards only report (no chart they drive). Explanations live in title= tooltips, not prose.
+# Warn hue is used only for the bot review; everything healthy is ink/grey + one accent.
+ADMIN = """<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Link visits</title>
 <link rel=stylesheet href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
-body{font-family:system-ui,sans-serif;margin:1.5rem}
-.tabs{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem}
-.tabs button{padding:.4rem .8rem;cursor:pointer}
-.tabs button.active{font-weight:bold;background:#222;color:#fff}
-.tabs button.bot{border-color:#b33}
-.panel{display:none}
+:root{--page:#f8f8f6;--card:#fff;--soft:#f1f1ef;--ink:#17171a;--ink2:#48484d;--muted:#66666d;
+--line:rgb(0 0 0/.075);--line2:rgb(0 0 0/.14);--accent:#3e63dd;--warn:#c98a00;--live:#12a150;
+--shadow:0 1px 2px rgb(0 0 0/.04),0 1px 1px rgb(0 0 0/.02);color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--page:#0b0b0d;--card:#141417;--soft:#1c1c20;
+--ink:#f3f3f5;--ink2:#c4c4ca;--muted:#8c8c95;--line:rgb(255 255 255/.08);--line2:rgb(255 255 255/.16);
+--accent:#7b96ff;--warn:#f6b100}}
+:root[data-theme=dark]{--page:#0b0b0d;--card:#141417;--soft:#1c1c20;--ink:#f3f3f5;--ink2:#c4c4ca;--muted:#8c8c95;
+--line:rgb(255 255 255/.08);--line2:rgb(255 255 255/.16);--accent:#7b96ff;--warn:#f6b100}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,sans-serif}
+.wrap{max-width:1640px;margin:0 auto;padding:24px}
+.num{font-variant-numeric:tabular-nums}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+.pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);
+border-radius:999px;background:var(--card);color:var(--ink2);font-size:13px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--live)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.kpi{padding:18px 20px}
+.kpi .lbl{color:var(--ink2);font-size:13px}
+.kpi .val{font-size:30px;font-weight:600;letter-spacing:-.03em;margin:4px 0 2px}
+.kpi .sub{color:var(--muted);font-size:13px}
+.kpi.warn .val{color:var(--warn)}
+.main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+.list{padding:8px}
+.list h2,.panel h2{font-size:13px;font-weight:500;color:var(--muted);margin:8px 10px}
+.item{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;
+border-radius:12px;cursor:pointer}
+.item:hover{background:var(--soft)}
+.item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.item.active{background:color-mix(in srgb,var(--accent) 7%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
+.av{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:500;
+background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.item.bot .av{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.it{min-width:0;flex:1}
+.it .nm{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .ds{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ago{color:var(--muted);font-size:12px;flex:none}
+.chip{flex:none;font-size:12px;font-weight:500;padding:1px 8px;border-radius:999px;
+background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--ink)}
+.sep{height:1px;background:var(--line);margin:6px 10px}
+.panel{display:none;padding:20px}
 .panel.active{display:block}
-.map{height:280px;margin:.5rem 0}
-table{border-collapse:collapse;margin-top:.5rem}
-td,th{border:1px solid #ccc;padding:.25rem .5rem;font-size:.9rem}
+.ph{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ph input{font:600 18px system-ui,sans-serif;color:var(--ink);background:transparent;border:1px solid transparent;
+border-radius:8px;padding:4px 8px;margin-left:-8px;min-width:0;width:22ch}
+.ph input:hover,.ph input:focus{border-color:var(--line2);outline:none}
+.ph .ttl{font-size:18px;font-weight:600}
+.btn{font:500 13px system-ui,sans-serif;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);
+background:var(--card);color:var(--ink);cursor:pointer}
+.btn:hover{background:var(--soft)}
+.saved{color:var(--muted);font-size:12px}
+.facts{color:var(--muted);font-size:13px;margin:6px 0 14px}
+.facts b{color:var(--ink2);font-weight:500}
+.map{height:300px;border-radius:12px;border:1px solid var(--line);margin-bottom:16px;z-index:0}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap;color:var(--ink2)}
+td.t{color:var(--muted)}
+td.ua{max-width:240px;overflow:hidden;text-overflow:ellipsis}
+tr:last-child td{border-bottom:0}
+.empty{padding:48px 24px;text-align:center;color:var(--muted)}
+.empty code{color:var(--ink);background:var(--soft);padding:2px 6px;border-radius:6px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}.main{grid-template-columns:minmax(0,1fr)}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px}.list h2,.sep{grid-column:1/-1}}
+@media (max-width:480px){.wrap{padding:16px}.kpi{padding:14px 16px}.kpi .val{font-size:24px}.panel{padding:16px}
+.ago{display:none}.map{height:220px}}
 </style>
-<h1>Admin</h1>
-<p>Each tab is one device (by browser cookie). Map pins are approximate (city level), from IP address.
-The "Possible bots" tab holds visits whose browser string matches a known link-preview/crawler bot --
-review it yourself; nothing there is auto-trusted or auto-discarded.</p>
-<div class="tabs">__TABS__</div>
-__PANELS__
+<div class=wrap>
+<header><h1>Link visits</h1>
+<span class=pill title="Rendered when this page loaded. Reload for new visits."><span class=dot></span>Updated __NOW__ UTC</span></header>
+__BODY__
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 const maps = __MAPS__;
 function showTab(id) {
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + id));
-  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.id === id));
+  document.querySelectorAll(".item").forEach(b => {
+    b.classList.toggle("active", b.dataset.id === id);
+    b.setAttribute("aria-selected", b.dataset.id === id);
+  });
   const pins = maps[id];
   if (pins && pins.length && !pins._map) {
     const m = L.map("map-" + id).setView([pins[0].lat, pins[0].lon], 10);
@@ -218,85 +283,153 @@ function showTab(id) {
     pins.forEach(p => {
       const s = document.createElement("span");
       s.textContent = p.label;  // textContent: labels contain attacker-influenced strings
-      L.marker([p.lat, p.lon]).addTo(m).bindPopup(s);
+      L.circleMarker([p.lat, p.lon], {radius: 7, weight: 2, color: "#3e63dd", fillOpacity: .35}).addTo(m).bindPopup(s);
     });
-    if (pins.length > 1) m.fitBounds(pins.map(p => [p.lat, p.lon]), {maxZoom: 12});
+    if (pins.length > 1) m.fitBounds(pins.map(p => [p.lat, p.lon]), {maxZoom: 12, padding: [24, 24]});
     pins._map = m;
   } else if (pins && pins._map) {
     pins._map.invalidateSize();
   }
 }
 async function rename(id) {
-  const label = document.getElementById("label-" + id).value;
-  await fetch("/admin/label", {method: "POST", headers: {"Content-Type": "application/json"},
+  const label = document.getElementById("label-" + id).value.trim();
+  const note = document.getElementById("saved-" + id);
+  const r = await fetch("/admin/label", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({device_id: id, label})});
-  document.getElementById("tabbtn-" + id).textContent = label || id;
+  note.textContent = r.ok ? "Saved" : "Not saved";
+  if (r.ok) document.querySelector("#tabbtn-" + id + " .nm").textContent = label || "Device " + id.slice(0, 8);
 }
-document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.id)));
-const first = document.querySelector(".tabs button");
+document.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => showTab(b.dataset.id)));
+document.querySelectorAll(".ph input").forEach(i => i.addEventListener("keydown", ev => {
+  if (ev.key === "Enter") rename(i.dataset.id);
+}));
+const first = document.querySelector(".item");
 if (first) showTab(first.dataset.id);
 </script>"""
 
 def _device_label(dev, device_id):
     return dev.get("label") or f"Device {device_id[:8]}"
 
-def _panel(title, device_id, visits, telem, extra_note="", raw_label=""):
+def _ts(s):
+    return datetime.fromisoformat(s)
+
+def _ago(s, now):
+    secs = int((now - _ts(s)).total_seconds())
+    for unit, n in (("d", 86400), ("h", 3600), ("m", 60)):
+        if secs >= n:
+            return f"{secs // n}{unit} ago"
+    return "just now"
+
+def _short_time(s):
+    return _ts(s).strftime("%b %d %H:%M")
+
+def _place(v):
+    return ", ".join(x for x in (v.get("city"), v.get("country")) if x)
+
+def _panel(title, device_id, visits, telem, now, raw_label=""):
+    """One device's (or the bot group's) detail panel: name, facts line, map, visit table.
+    raw_label=None means not renamable (the bot group)."""
     e = html.escape
-    heads = ["time_utc", "ip", "link", "user_agent"] + TELEM_FIELDS
-    th = "".join(f"<th>{h}</th>" for h in heads)
-    rows = ""
-    pins, seen = [], set()
-    for v in sorted(visits, key=lambda v: v["time_utc"], reverse=True):
+    visits = sorted(visits, key=lambda v: v["time_utc"], reverse=True)
+    heads = ["Time (UTC)", "IP", "Place", "Provider", "Link", "Browser", "Time zone", "Language", "Screen",
+             "Window", "Ratio"]
+    rows, pins, seen = "", [], set()
+    for v in visits:
         t = telem.get(v["id"], {})
-        cells = [v["time_utc"], v["ip"], v["link"], v["user_agent"]] + [t.get(k, "") for k in TELEM_FIELDS]
-        rows += "<tr>" + "".join(f"<td>{e(str(c))}</td>" for c in cells) + "</tr>"
+        cells = [f'<td class=t title="{e(v["time_utc"])}">{e(_short_time(v["time_utc"]))}</td>',
+                 f'<td>{e(v["ip"])}</td>', f'<td>{e(_place(v) or "—")}</td>', f'<td>{e(v.get("isp") or "—")}</td>',
+                 f'<td>{e(v["link"])}</td>', f'<td class=ua title="{e(v["user_agent"])}">{e(v["user_agent"] or "—")}</td>']
+        cells += [f"<td>{e(str(t.get(k) or '—'))}</td>" for k in TELEM_FIELDS]  # — = page script never reported
+        rows += "<tr>" + "".join(cells) + "</tr>"
         if v.get("lat") is not None and (v["lat"], v["lon"]) not in seen:
             seen.add((v["lat"], v["lon"]))
             place = ", ".join(x for x in (v["city"], v["region"], v["country"]) if x) or "unknown location"
             pins.append({"lat": v["lat"], "lon": v["lon"], "label": f"{v['ip']} - {place}"})
-    rename_box = (f'<p><input id="label-{e(device_id)}" placeholder="name this device" '
-                 f'value="{e(raw_label)}">'
-                 f' <button onclick="rename(\'{e(device_id)}\')">Save name</button></p>') if raw_label is not None else ""
-    map_div = f'<div id="map-{e(device_id or "bots")}" class="map"></div>' if pins else "<p>No located visits.</p>"
-    html_out = (f"<h2>{e(title)}</h2>{extra_note}{rename_box}{map_div}"
-               f"<table><tr>{th}</tr>{rows}</table>")
+    did = e(device_id)
+    if raw_label is not None:
+        head = (f'<input id="label-{did}" data-id="{did}" value="{e(raw_label)}" placeholder="{e(title)}" '
+                f'aria-label="Device name" maxlength=60 title="Name this device">'
+                f'<button class=btn onclick="rename(\'{did}\')">Save name</button><span class=saved id="saved-{did}"></span>')
+    else:
+        head = (f'<span class=ttl>{e(title)}</span><span class=chip title="Flagged by User-Agent string '
+                f'(Discord/Slack/search-crawler style). A hint, not proof: a real visitor could send a matching '
+                f'header and a bot a non-matching one. Nothing here is auto-trusted or discarded.">review</span>')
+    places = {_place(v) for v in visits if _place(v)}
+    ips = {v["ip"] for v in visits}
+    n = len(visits)
+    facts = (f'<b class=num>{n}</b> visit{"s" if n != 1 else ""} · <b class=num>{len(ips)}</b> IP{"s" if len(ips) != 1 else ""}'
+             f' · <b class=num>{len(places)}</b> place{"s" if len(places) != 1 else ""}'
+             f' · first <span title="{e(visits[-1]["time_utc"])}">{e(_short_time(visits[-1]["time_utc"]))}</span>'
+             f' · last <span title="{e(visits[0]["time_utc"])}">{e(_ago(visits[0]["time_utc"], now))}</span>')
+    map_div = (f'<div id="map-{did}" class="map" title="Approximate (city level), from IP address"></div>'
+               if pins else "")
+    th = "".join(f"<th>{h}</th>" for h in heads)
+    html_out = (f'<div class=ph>{head}</div><div class=facts>{facts}</div>{map_div}'
+                f'<div class=tw><table><tr>{th}</tr>{rows}</table></div>')
     return html_out, pins
 
-def admin_html(devices, visits, telem_rows):
+def _item(item_id, title, sub, ago, bot=False, count=0):
+    e = html.escape
+    initials = "".join(w[0] for w in title.split()[:2]).upper() or "?"
+    right = f'<span class=chip>{count}</span>' if bot else f'<span class=ago>{e(ago)}</span>'
+    return (f'<button class="item{" bot" if bot else ""}" role=tab id="tabbtn-{e(item_id)}" data-id="{e(item_id)}">'
+            f'<span class=av>{"!" if bot else e(initials)}</span>'
+            f'<span class=it><span class=nm>{e(title)}</span><span class=ds>{e(sub)}</span></span>{right}</button>')
+
+def admin_html(devices, visits, telem_rows, now=None):
+    now = now or datetime.now(timezone.utc)
     telem = {r["visit_id"]: r for r in telem_rows}
     by_device, bots = {}, []
     for v in visits:
         (bots if v.get("is_bot") else by_device.setdefault(v.get("device_id") or "unknown", [])).append(v)
     dev_by_id = {d["device_id"]: d for d in devices}
     e = html.escape
+    head = ADMIN.replace("__NOW__", now.strftime("%H:%M"))
+
+    if not visits:
+        links = " ".join(f"<code>/r/{e(k)}</code>" for k in LINKS)
+        body = f'<div class="card empty">No visits yet. Open a link to log the first one: {links}</div>'
+        return head.replace("__BODY__", body).replace("__MAPS__", "{}")
 
     # order real devices by their most recent visit, newest first
-    order = sorted(by_device, key=lambda d: max(v["time_utc"] for v in by_device[d]), reverse=True)
-    tabs, panels, maps = [], [], {}
+    last = {d: max(v["time_utc"] for v in vs) for d, vs in by_device.items()}
+    order = sorted(by_device, key=last.get, reverse=True)
+    items, panels, maps = [], [], {}
     for device_id in order:
-        dev = dev_by_id.get(device_id, {})
+        dev, vs = dev_by_id.get(device_id, {}), by_device[device_id]
         title = _device_label(dev, device_id)
-        panel_html, pins = _panel(title, device_id, by_device[device_id], telem, raw_label=dev.get("label") or "")
-        tabs.append(f'<button id="tabbtn-{e(device_id)}" data-id="{e(device_id)}">{e(title)}</button>')
-        panels.append(f'<div class="panel" id="panel-{e(device_id)}">{panel_html}</div>')
+        panel_html, pins = _panel(title, device_id, vs, telem, now, raw_label=dev.get("label") or "")
+        place = _place(max(vs, key=lambda v: v["time_utc"]))
+        sub = f"{len(vs)} visit{'s' if len(vs) != 1 else ''}" + (f" · {place}" if place else "")
+        items.append(_item(device_id, title, sub, _ago(last[device_id], now)))
+        panels.append(f'<div class="card panel" role=tabpanel id="panel-{e(device_id)}">{panel_html}</div>')
         maps[device_id] = pins
-
     if bots:
-        panel_html, pins = _panel("Possible bots", "bots", bots, telem, raw_label=None,
-                                  extra_note="<p>Flagged by User-Agent string (Discord/Slack/search-crawler "
-                                  "style). Check before trusting -- a real visitor could in theory send a "
-                                  "matching header, and a bot could send a non-matching one.</p>")
-        tabs.append('<button id="tabbtn-bots" class="bot" data-id="bots">&#9888; Possible bots '
-                    f'({len(bots)})</button>')
-        panels.append(f'<div class="panel" id="panel-bots">{panel_html}</div>')
+        panel_html, pins = _panel("Possible bots", "bots", bots, telem, now, raw_label=None)
+        items.append('<div class=sep></div>' + _item("bots", f"Possible bots ({len(bots)})", "flagged by browser string",
+                                                    "", bot=True, count=len(bots)))
+        panels.append(f'<div class="card panel" role=tabpanel id="panel-bots">{panel_html}</div>')
         maps["bots"] = pins
 
-    if not tabs:
-        return ADMIN.replace("__TABS__", "").replace("__PANELS__", "<p>No visits yet.</p>").replace("__MAPS__", "{}")
+    named = sum(1 for d in by_device if dev_by_id.get(d, {}).get("label"))
+    human = len(visits) - len(bots)
+    newest = max(v["time_utc"] for v in visits)
+    today = sum(1 for v in visits if _ts(v["time_utc"]).date() == now.date())
+    kpis = [
+        ("Visits", len(visits), f"{today} today", "", "All logged visits, bots included"),
+        ("Devices", len(by_device), f"{named} named", "", "Distinct browsers, by device cookie; bot visits excluded"),
+        ("Possible bots", len(bots), f"of {len(visits)} visits", "warn" if bots else "",
+         "Visits whose User-Agent matches a known link-preview or crawler bot. Review them in their tab."),
+        ("Last visit", _ago(newest, now), _short_time(newest) + " UTC", "", f"{human} visits from real devices"),
+    ]
+    kpi_html = "".join(f'<div class="card kpi {cls}" title="{e(tip)}"><div class=lbl>{lbl}</div>'
+                       f'<div class="val num">{e(str(val))}</div><div class=sub>{e(sub)}</div></div>'
+                       for lbl, val, sub, cls, tip in kpis)
+    body = (f'<section class=kpis>{kpi_html}</section><section class=main>'
+            f'<nav class="card list" role=tablist aria-label=Devices><h2>Devices</h2>{"".join(items)}</nav>'
+            f'<div>{"".join(panels)}</div></section>')
     maps_js = json.dumps(maps).replace("<", "\\u003c")  # "<" escaped so a value can't close the script tag
-    return (ADMIN.replace("__TABS__", "".join(tabs))
-                 .replace("__PANELS__", "".join(panels))
-                 .replace("__MAPS__", maps_js))
+    return head.replace("__BODY__", body).replace("__MAPS__", maps_js)
 
 def admin_auth_ok():
     if not ADMIN_PASSWORD:
