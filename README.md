@@ -21,19 +21,23 @@ A small web app for our security class. It works as a link redirector: a short l
 | Approximate location (city, region, country, lat/lon) and internet provider | Looked up from the IP via [ip-api.com](https://ip-api.com) (the IP is sent to that service) |
 | Browser (User-Agent) and time | Request header and server clock |
 | Time zone, language, screen size, window size, pixel ratio | Small script on the notice page, sent to `/t` |
+| A device identifier, so repeat visits from the same browser group together | An httponly cookie, set on first visit |
 
-Telemetry is deliberately coarse: no canvas, font or other fingerprinting, and no cookies or persistent IDs. The server drops any field outside that list.
+Telemetry is deliberately coarse: no canvas, font or other fingerprinting. The server drops any field outside that list.
 
 ## Features
 
 - Short links (`/r/<name>`) mapped to an allowlist of destinations (no `?url=` redirects, which would be an open-redirect hole)
 - Notice page with a 5-second countdown, then a redirect
-- Each visit gets a random ID, so its telemetry is joined to it
-- Logging to a Supabase Postgres database (`visits` and `telemetry` tables, see `schema.sql`)
+- Each visit gets a random ID, so its telemetry is joined to it; each browser gets a cookie ID, so its visits are joined to each other
+- Logging to a Supabase Postgres database (`devices`, `visits`, `telemetry` tables, see `schema.sql`)
 - Escaping of logged values so headers can't inject into pages
-- Password-protected `/admin` page:
-  - visits grouped by visitor IP, with each visit's telemetry shown beside it
-  - a map of approximate visitor locations (Leaflet and OpenStreetMap tiles, loaded in the admin's browser)
+- Visits whose User-Agent matches a known link-preview/crawler bot (Discord, Slack, search engines, ...) are flagged, not hidden or treated differently when served
+- Password-protected `/admin` dashboard:
+  - one tab per device, newest activity first, each visit sorted by time within it
+  - name a device from its tab (stored, shown from then on instead of the raw ID)
+  - each device's own small map of its approximate visit locations (Leaflet and OpenStreetMap tiles, loaded in the admin's browser)
+  - flagged bot visits sit in their own tab, separate from real devices, reviewed by opening that tab rather than being deleted or hidden from the data
 
 ## Stack
 
@@ -70,7 +74,7 @@ ADMIN_PASSWORD=choose-a-password python3 app.py
 1. **Supabase:** create a free project at supabase.com. Open SQL Editor, paste `schema.sql`, and run it. Under Project Settings, then API, copy the project URL and the `service_role` key.
 2. **GitHub:** push this repo.
 3. **Vercel:** import the repo as a new project. Under Settings, then Environment Variables, add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `ADMIN_PASSWORD`, then deploy.
-4. Open `https://<project>.vercel.app/r/demo`, then `/admin` to check the visit and map appear.
+4. Open `https://<project>.vercel.app/r/demo`, then `/admin` to check the visit, its device tab and its map pin appear.
 5. **After grading:** delete the Vercel project and the Supabase project, which also removes the logs.
 
 The app refuses to start on Vercel if the Supabase variables are missing, rather than silently losing logs.
@@ -82,6 +86,7 @@ The app refuses to start on Vercel if the Supabase variables are missing, rather
 - What a page's script can add on top of an IP (time zone, language, screen)
 - Privacy and legal concerns: consent, GDPR-style rules, misuse of IP loggers
 - Why open redirects are a vulnerability, and why we use an allowlist
+- How link-preview bots (Discord, Slack, ...) identify themselves, and why that's only a hint, not proof
 - Defenses: VPNs, Tor, link previews, blocking tracking requests
 
 ## Status
