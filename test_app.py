@@ -16,8 +16,7 @@ H = {"X-Forwarded-For": "6.6.6.6, 8.8.8.8", "User-Agent": "</script><b>x"}
 # redirect page: logs the proxy-added IP (rightmost), shows what is recorded, escapes the User-Agent,
 # and sets a device cookie
 r = c.get("/r/demo", headers=H)
-assert r.status_code == 200 and b"8.8.8.8" in r.data and b"Ashburn" in r.data
-assert b"</script><b>" not in r.data and b"&lt;/script&gt;" in r.data
+assert r.status_code == 200 and b"url=https://example.com" in r.data  # spinner page redirects to the dest
 device_id = c.get_cookie("device_id").value
 assert len(device_id) == 32
 vid = m._mem["visits"][0]["id"]

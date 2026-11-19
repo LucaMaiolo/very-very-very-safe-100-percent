@@ -2,7 +2,7 @@
 coarse browser telemetry, bot flagging, password-protected /admin dashboard with one tab per
 device (nameable, own map) plus a separate reviewed-on-demand bot tab.
 Local run: python3 app.py -> http://localhost:8000/r/demo (in-memory storage if Supabase isn't configured)."""
-import hmac, html, ipaddress, json, os, re, secrets, sys, urllib.parse, urllib.request
+import hmac, html, ipaddress, json, os, re, secrets, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from flask import Flask, Response, abort, redirect, request
 
@@ -105,7 +105,7 @@ def link_dest(name):
         elif name in _mem["links"]:
             return _mem["links"][name]["url"]
     except OSError as err:  # fall back to the defaults rather than break every link
-        print(f"link lookup failed: {err}", file=sys.stderr)
+        print(f"link lookup failed: {why(err)}", file=sys.stderr)
     return LINKS.get(name)
 
 def valid_dest(url):
@@ -117,17 +117,22 @@ def valid_dest(url):
     return p.scheme in ("http", "https") and bool(p.hostname) and len(url) <= 500 and url.isprintable() \
         and " " not in url
 
+def why(err):
+    """Error text plus Supabase's own reason (which column/table/key it rejected), for the logs."""
+    body = err.read(300).decode(errors="replace") if isinstance(err, urllib.error.HTTPError) else ""
+    return f"{err} {body}".strip()
+
 def save(table, row):
     try:
         db_insert(table, row)
     except OSError as err:  # a logging failure must not break the visitor's page
-        print(f"db insert into {table} failed: {err}", file=sys.stderr)
+        print(f"db insert into {table} failed: {why(err)}", file=sys.stderr)
 
 def touch_device(device_id, ts, label=None):
     try:
         db_upsert_device(device_id, ts, label)
     except OSError as err:
-        print(f"device upsert failed: {err}", file=sys.stderr)
+        print(f"device upsert failed: {why(err)}", file=sys.stderr)
 
 # ---- geo / ISP ----------------------------------------------------------------------------------
 _geo_cache = {}
@@ -165,27 +170,37 @@ def page(body):
     return Response(body, mimetype="text/html", headers={"Cache-Control": "no-store"})
 
 # ---- notice page --------------------------------------------------------------------------------
+# Literal { and } are doubled because render() fills this with str.format.
 NOTICE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="3;url={dest}">
 <title>Loading</title>
 <style>
-  body { margin: 0; height: 100vh; display: grid; place-items: center; background: #111; }
-  .spinner {
+  body {{ margin: 0; height: 100vh; display: grid; place-items: center; background: #111; }}
+  .spinner {{
     width: 60px; height: 60px;
     border: 6px solid #333;
     border-top-color: #4ea1ff;
     border-radius: 50%;
     animation: spin 1s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  @media (prefers-reduced-motion: reduce) {{ .spinner {{ animation-duration: 3s; }} }}
 </style>
 </head>
 <body>
   <div class="spinner" role="status" aria-label="Loading"></div>
+  <noscript><a href="{dest}">Continue</a></noscript>
+<script>
+fetch("/t", {{method: "POST", keepalive: true, headers: {{"Content-Type": "application/json"}},
+  body: JSON.stringify({{id: "{vid}", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language, screen: screen.width + "x" + screen.height,
+    viewport: innerWidth + "x" + innerHeight, pixel_ratio: devicePixelRatio}})}})
+  .finally(() => location.replace("{dest}"));  // keepalive: the POST survives the navigation
+</script>
 </body>
 </html>
 """
@@ -523,7 +538,7 @@ def admin():
         return page(admin_html(db_select("devices"), db_select("visits"), db_select("telemetry"),
                                links=all_links()))
     except OSError as err:
-        print(f"db select failed: {err}", file=sys.stderr)
+        print(f"db select failed: {why(err)}", file=sys.stderr)
         abort(502)
 
 @app.post("/admin/link")
@@ -538,7 +553,7 @@ def admin_link():
     try:
         db_upsert_link(name, url)
     except OSError as err:
-        print(f"link upsert failed: {err}", file=sys.stderr)
+        print(f"link upsert failed: {why(err)}", file=sys.stderr)
         abort(502)
     return "", 204
 
