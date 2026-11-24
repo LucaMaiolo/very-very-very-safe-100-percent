@@ -96,6 +96,6 @@ The app refuses to start on Vercel if the Supabase variables are missing, rather
 - [x] README
 - [x] Server (`app.py`)
 - [x] Rewrite for Vercel + Supabase
-- [ ] Supabase project + schema
-- [ ] Deployed and tested on Vercel
-- [ ] Write-up
+- [x] Supabase project + schema
+- [x] Deployed and tested on Vercel
+- [x] Write-up
