@@ -230,6 +230,21 @@ def render(vid, dest, ip, g, ua, ts):
     return NOTICE.format(vid=vid, dest=e(dest), ip=e(ip), place=e(place),
                          isp=e(g["isp"] or "unknown"), ua=e(ua), ts=ts)
 
+HOME = """<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>heyloggy</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#e8e8ea;
+font:16px/1.5 system-ui,-apple-system,sans-serif;text-align:center;padding:24px}
+h1{font-size:28px;margin:0 0 8px}
+p{color:#a9a9b2;margin:0}
+</style>
+<body><div><h1>heyloggy</h1><p>IP logger project made by Jaden Mayoff and Luca Maiolo</p></div>"""
+
+@app.get("/")
+def home():
+    return page(HOME)
+
 @app.get("/r/<name>")
 def redirect_page(name):
     dest = link_dest(name)
