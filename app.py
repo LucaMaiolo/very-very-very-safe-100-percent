@@ -237,9 +237,14 @@ HOME = """<!doctype html><html lang=en><meta charset=utf-8>
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#e8e8ea;
 font:16px/1.5 system-ui,-apple-system,sans-serif;text-align:center;padding:24px}
 h1{font-size:28px;margin:0 0 8px}
-p{color:#a9a9b2;margin:0}
+p{color:#a9a9b2;margin:0 0 20px}
+.btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+a.btn{display:inline-block;padding:10px 18px;border-radius:8px;border:1px solid #333;color:#e8e8ea;
+text-decoration:none;font-size:14px}
+a.btn:hover{background:#1c1c20}
 </style>
-<body><div><h1>heyloggy</h1><p>IP logger project made by Jaden Mayoff and Luca Maiolo</p></div>"""
+<body><div><h1>heyloggy</h1><p>IP logger project made by Jaden Mayoff and Luca Maiolo</p>
+<div class=btns><a class=btn href="/admin">Admin</a><a class=btn href="/r/demo">Try a link</a></div></div>"""
 
 @app.get("/")
 def home():
