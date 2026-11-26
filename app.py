@@ -176,30 +176,48 @@ NOTICE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="3;url={dest}">
-<title>Loading</title>
+<meta http-equiv="refresh" content="5;url={dest}">
+<title>Security class demo</title>
 <style>
-  body {{ margin: 0; height: 100vh; display: grid; place-items: center; background: #111; }}
-  .spinner {{
-    width: 60px; height: 60px;
-    border: 6px solid #333;
-    border-top-color: #4ea1ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }}
-  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-  @media (prefers-reduced-motion: reduce) {{ .spinner {{ animation-duration: 3s; }} }}
+  :root {{ color-scheme: light dark; }}
+  body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+         background: #111; color: #e8e8ea; font: 15px/1.55 system-ui, -apple-system, sans-serif; }}
+  .box {{ max-width: 540px; width: 100%; }}
+  h1 {{ font-size: 20px; margin: 0 0 4px; }}
+  .lead {{ color: #a9a9b2; margin: 0 0 18px; }}
+  ul {{ margin: 0 0 18px; padding-left: 18px; }}
+  li {{ margin: 3px 0; }}
+  .k {{ color: #8c8c95; }}
+  .note {{ color: #a9a9b2; font-size: 13px; }}
+  a {{ color: #4ea1ff; }}
 </style>
 </head>
 <body>
-  <div class="spinner" role="status" aria-label="Loading"></div>
-  <noscript><a href="{dest}">Continue</a></noscript>
+  <div class="box">
+    <h1>Security class demo</h1>
+    <p class="lead">This is a university class project. Before forwarding you, this visit records:</p>
+    <ul>
+      <li><span class="k">IP address:</span> {ip}</li>
+      <li><span class="k">Approximate location:</span> {place}</li>
+      <li><span class="k">Internet provider:</span> {isp}</li>
+      <li><span class="k">Browser:</span> {ua}</li>
+      <li><span class="k">Time (UTC):</span> {ts}</li>
+      <li>From your browser: time zone, language, screen and window size, pixel ratio</li>
+      <li>A cookie that tells repeat visits from this browser apart from new ones</li>
+    </ul>
+    <p class="note">Your IP is sent to ip-api.com to look up the location and provider.
+       Data is used only for the class demo and deleted after grading.</p>
+    <p>Redirecting in <span id="n">5</span> seconds. <a href="{dest}">Continue now</a></p>
+    <noscript><a href="{dest}">Continue</a></noscript>
+  </div>
 <script>
 fetch("/t", {{method: "POST", keepalive: true, headers: {{"Content-Type": "application/json"}},
   body: JSON.stringify({{id: "{vid}", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     language: navigator.language, screen: screen.width + "x" + screen.height,
-    viewport: innerWidth + "x" + innerHeight, pixel_ratio: devicePixelRatio}})}})
-  .finally(() => location.replace("{dest}"));  // keepalive: the POST survives the navigation
+    viewport: innerWidth + "x" + innerHeight, pixel_ratio: devicePixelRatio}})}});  // keepalive: survives the redirect
+let n = 5, el = document.getElementById("n");
+setInterval(() => {{ if (n > 0) el.textContent = --n; }}, 1000);
+setTimeout(() => location.replace("{dest}"), 5000);
 </script>
 </body>
 </html>
