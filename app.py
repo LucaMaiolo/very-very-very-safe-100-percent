@@ -195,7 +195,7 @@ NOTICE = """<!doctype html>
 <body>
   <div class="box">
     <h1>Security class demo</h1>
-    <p class="lead">This is a university class project. Before forwarding you, this visit records:</p>
+    <p class="lead">This is a class project (Security at JOHN ABBOTT COLLEGE). Before forwarding you, this visit records:</p>
     <ul>
       <li><span class="k">IP address:</span> {ip}</li>
       <li><span class="k">Approximate location:</span> {place}</li>
